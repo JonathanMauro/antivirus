@@ -29,6 +29,15 @@ cargo run -p tkv-cli -- scan C:\caminho\para\pasta
 cargo run -p tkv-cli -- scan . --signatures signatures\hashes.txt --json
 cargo run -p tkv-cli -- hash arquivo.exe
 
+# Histórico e quarentena
+cargo run -p tkv-cli -- scan C:\pasta --quarantine   # isola só os MALICIOSOS
+cargo run -p tkv-cli -- history                      # últimas varreduras
+cargo run -p tkv-cli -- history 3                    # detecções da varredura #3
+cargo run -p tkv-cli -- quarantine list [--all]
+cargo run -p tkv-cli -- quarantine add arquivo.exe
+cargo run -p tkv-cli -- quarantine restore <id> [--overwrite]
+cargo run -p tkv-cli -- quarantine delete <id>
+
 # IA
 cd ml
 python -m venv .venv; .\.venv\Scripts\Activate.ps1
@@ -37,6 +46,15 @@ pytest
 python -m tkv_ml.features C:\Windows\System32 data\limpos.csv
 python -m tkv_ml.anomaly train data\limpos.csv models\iforest.joblib
 ```
+
+## Dados locais
+
+Os dados ficam em `%LOCALAPPDATA%\ThugasKillVirus`, ou no diretório indicado em `--data-dir`:
+
+- `tkv.db`: banco SQLite com as varreduras, as detecções, a quarentena e as configurações.
+- `quarantine\<id>.qtn`: arquivos isolados. O conteúdo é cifrado com XOR, o que impede que sejam executados ou detectados de novo. Na restauração, o SHA-256 é conferido.
+
+Ao usar `--quarantine`, só os arquivos **maliciosos** (assinatura confirmada) são isolados automaticamente. Os **suspeitos** (detectados só por heurística) aparecem no relatório e podem ser isolados manualmente com `quarantine add`.
 
 ## Como funciona o Risk Score (versão inicial)
 

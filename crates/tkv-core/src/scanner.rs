@@ -21,6 +21,16 @@ pub enum Verdict {
     Malicious,
 }
 
+impl Verdict {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Verdict::Clean => "clean",
+            Verdict::Suspicious => "suspicious",
+            Verdict::Malicious => "malicious",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Detection {
     pub path: PathBuf,
@@ -192,7 +202,7 @@ impl Scanner {
 
         report
             .detections
-            .sort_by(|a, b| b.risk_score.cmp(&a.risk_score));
+            .sort_by_key(|d| std::cmp::Reverse(d.risk_score));
         report.elapsed = start.elapsed();
         report
     }

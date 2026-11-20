@@ -68,7 +68,7 @@ pub fn double_extension(name: &str) -> Option<Indicator> {
     let last = parts.next()?;
     let previous = parts.next()?;
     // Garante que existe um nome base antes da extensão falsa.
-    if parts.next().map_or(true, str::is_empty) {
+    if parts.next().is_none_or(str::is_empty) {
         return None;
     }
     if EXECUTABLE_EXTS.contains(&last) && DECOY_EXTS.contains(&previous) {
