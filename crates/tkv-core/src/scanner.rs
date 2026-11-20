@@ -1,5 +1,6 @@
 //! Scanner de arquivos e pastas.
 
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -59,6 +60,8 @@ pub struct ScanReport {
     /// Apenas arquivos com veredito diferente de `Clean`.
     pub detections: Vec<Detection>,
     pub errors: Vec<ScanError>,
+    /// Verdadeiro se a varredura foi interrompida pelo callback.
+    pub cancelled: bool,
     #[serde(with = "duration_ms")]
     pub elapsed: Duration,
 }
@@ -150,14 +153,39 @@ impl Scanner {
     }
 
     /// Varre um arquivo ou uma pasta (recursivamente).
-    /// `on_file` é chamado para cada arquivo analisado (útil para progresso na interface).
-    pub fn scan_path<F>(&self, root: &Path, mut on_file: F) -> ScanReport
+    /// `on_file` é chamado antes de cada arquivo (progresso na interface);
+    /// devolver `ControlFlow::Break(())` cancela a varredura.
+    pub fn scan_path<F>(&self, root: &Path, on_file: F) -> ScanReport
     where
-        F: FnMut(&Path),
+        F: FnMut(&Path) -> ControlFlow<()>,
+    {
+        self.scan_paths(&[root.to_path_buf()], on_file)
+    }
+
+    /// Varre vários arquivos/pastas, acumulando um único relatório.
+    pub fn scan_paths<F>(&self, roots: &[PathBuf], mut on_file: F) -> ScanReport
+    where
+        F: FnMut(&Path) -> ControlFlow<()>,
     {
         let start = Instant::now();
         let mut report = ScanReport::default();
+        for root in roots {
+            if self.walk(root, &mut report, &mut on_file).is_break() {
+                report.cancelled = true;
+                break;
+            }
+        }
+        report
+            .detections
+            .sort_by_key(|d| std::cmp::Reverse(d.risk_score));
+        report.elapsed = start.elapsed();
+        report
+    }
 
+    fn walk<F>(&self, root: &Path, report: &mut ScanReport, on_file: &mut F) -> ControlFlow<()>
+    where
+        F: FnMut(&Path) -> ControlFlow<()>,
+    {
         let walker = WalkDir::new(root).follow_links(self.config.follow_symlinks);
         for entry in walker {
             let entry = match entry {
@@ -184,7 +212,7 @@ impl Scanner {
                 }
             }
 
-            on_file(path);
+            on_file(path)?;
             match self.scan_file(path) {
                 Ok(det) => {
                     report.files_scanned += 1;
@@ -199,12 +227,7 @@ impl Scanner {
                 }),
             }
         }
-
-        report
-            .detections
-            .sort_by_key(|d| std::cmp::Reverse(d.risk_score));
-        report.elapsed = start.elapsed();
-        report
+        ControlFlow::Continue(())
     }
 }
 
@@ -276,7 +299,10 @@ mod tests {
         let scanner = Scanner::new(db, ScanConfig::default());
 
         let mut seen = 0;
-        let report = scanner.scan_path(dir.path(), |_| seen += 1);
+        let report = scanner.scan_path(dir.path(), |_| {
+            seen += 1;
+            ControlFlow::Continue(())
+        });
 
         assert_eq!(seen, 2);
         assert_eq!(report.files_scanned, 2);
@@ -299,8 +325,35 @@ mod tests {
                 ..ScanConfig::default()
             },
         );
-        let report = scanner.scan_path(dir.path(), |_| {});
+        let report = scanner.scan_path(dir.path(), |_| ControlFlow::Continue(()));
         assert_eq!(report.files_scanned, 0);
         assert_eq!(report.skipped_too_large, 1);
+    }
+
+    #[test]
+    fn scan_can_be_cancelled_and_handles_multiple_roots() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        for i in 0..5 {
+            std::fs::write(a.path().join(format!("a{i}.txt")), b"a").unwrap();
+            std::fs::write(b.path().join(format!("b{i}.txt")), b"b").unwrap();
+        }
+        let roots = [a.path().to_path_buf(), b.path().to_path_buf()];
+
+        let full = scanner().scan_paths(&roots, |_| ControlFlow::Continue(()));
+        assert_eq!(full.files_scanned, 10);
+        assert!(!full.cancelled);
+
+        let mut seen = 0;
+        let partial = scanner().scan_paths(&roots, |_| {
+            seen += 1;
+            if seen > 3 {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        });
+        assert!(partial.cancelled);
+        assert_eq!(partial.files_scanned, 3);
     }
 }

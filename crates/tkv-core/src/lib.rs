@@ -21,3 +21,12 @@ pub use quarantine::Quarantine;
 pub use scanner::{Detection, ScanConfig, ScanReport, Scanner, Verdict};
 pub use signatures::SignatureDb;
 pub use storage::{Database, QuarantineItem, QuarantineStatus};
+
+/// Diretório padrão de dados (banco e quarentena), compartilhado pela
+/// interface e pela CLI: `%LOCALAPPDATA%\ThugasKillVirus`.
+pub fn default_data_dir() -> std::path::PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("ThugasKillVirus")
+}

@@ -16,6 +16,7 @@
 //!
 //! Códigos de saída: 0 = nada encontrado, 1 = ameaças/suspeitos, 2 = erro.
 
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -102,12 +103,7 @@ fn main() -> ExitCode {
 }
 
 fn data_dir(cli_value: Option<PathBuf>) -> PathBuf {
-    cli_value.unwrap_or_else(|| {
-        std::env::var_os("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("ThugasKillVirus")
-    })
+    cli_value.unwrap_or_else(tkv_core::default_data_dir)
 }
 
 struct Store {
@@ -183,7 +179,7 @@ fn cmd_scan(
         );
     }
 
-    let report = scanner.scan_path(&target, |_| {});
+    let report = scanner.scan_path(&target, |_| ControlFlow::Continue(()));
     let scan_id = store
         .db
         .record_scan(&target.to_string_lossy(), &report)

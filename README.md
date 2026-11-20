@@ -8,7 +8,7 @@ Os requisitos completos estão em [Projeto_Antivirus_Requisitos_e_Arquitetura.tx
 ```
 crates/tkv-core/   Núcleo: SHA-256, entropia, assinaturas, heurísticas, scanner
 crates/tkv-cli/    CLI "tkv" para testar o motor
-app/               Interface gráfica Tauri (a criar)
+app/               Aplicativo desktop Tauri (ver app/README.md)
 ml/                IA: extração de atributos (pefile) e Isolation Forest
 rules/yara/        Regras YARA (Fase 2)
 signatures/        Base de assinaturas por hash

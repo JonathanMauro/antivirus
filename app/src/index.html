@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>THUGAS KILL VIRUS</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <img src="logo.png" alt="" class="brand-logo">
+      <div>
+        <div class="brand-name">THUGAS</div>
+        <div class="brand-sub">KILL VIRUS</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-page="dashboard">
+        <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3zm0 8h8v-6H3zm10 0h8V11h-8zm0-18v6h8V3z"/></svg>
+        Painel
+      </button>
+      <button class="nav-item" data-page="scan">
+        <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14"/></svg>
+        Verificar
+      </button>
+      <button class="nav-item" data-page="history">
+        <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.95 8.95 0 0 0 13 21a9 9 0 0 0 0-18m-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z"/></svg>
+        Histórico
+      </button>
+      <button class="nav-item" data-page="quarantine">
+        <svg viewBox="0 0 24 24"><path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11z"/></svg>
+        Quarentena
+        <span class="badge hidden" id="nav-q-badge">0</span>
+      </button>
+      <button class="nav-item" data-page="settings">
+        <svg viewBox="0 0 24 24"><path d="M19.14 12.94a7.1 7.1 0 0 0 0-1.88l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.47.41l-.36 2.54a7.4 7.4 0 0 0-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58a7 7 0 0 0 0 1.88l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54a7 7 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2"/></svg>
+        Configurações
+      </button>
+    </nav>
+
+    <div class="sidebar-metrics">
+      <div class="metric-row"><span>CPU do app</span><strong id="m-app-cpu">–</strong></div>
+      <div class="meter"><div class="meter-fill" id="m-app-cpu-bar"></div></div>
+      <div class="metric-row"><span>Memória do app</span><strong id="m-app-mem">–</strong></div>
+      <div class="metric-row"><span>CPU do sistema</span><strong id="m-sys-cpu">–</strong></div>
+      <div class="meter"><div class="meter-fill alt" id="m-sys-cpu-bar"></div></div>
+      <div class="metric-row"><span>RAM do sistema</span><strong id="m-sys-mem">–</strong></div>
+      <div class="meter"><div class="meter-fill alt" id="m-sys-mem-bar"></div></div>
+    </div>
+    <div class="version" id="version"></div>
+  </aside>
+
+  <main class="content">
+    <!-- PAINEL -->
+    <section class="page active" id="page-dashboard">
+      <header class="page-header">
+        <h1>Painel</h1>
+      </header>
+
+      <div class="hero" id="hero">
+        <div class="hero-icon">
+          <svg viewBox="0 0 24 24" class="hero-ok"><path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5zm-2 16-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9z"/></svg>
+          <svg viewBox="0 0 24 24" class="hero-warn"><path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5zm1 16h-2v-2h2zm0-4h-2V7h2z"/></svg>
+        </div>
+        <div class="hero-text">
+          <h2 id="hero-title">Carregando…</h2>
+          <p id="hero-sub"></p>
+          <div class="hero-actions">
+            <button class="btn primary" data-quick-scan>Verificação rápida</button>
+            <button class="btn ghost" data-goto="scan">Outras opções</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <div class="card-label">Última verificação</div>
+          <div class="card-value" id="c-last-scan">–</div>
+          <div class="card-foot" id="c-last-scan-foot"></div>
+        </div>
+        <div class="card">
+          <div class="card-label">Em quarentena</div>
+          <div class="card-value" id="c-quarantine">–</div>
+          <div class="card-foot">arquivos isolados com segurança</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Assinaturas</div>
+          <div class="card-value" id="c-signatures">–</div>
+          <div class="card-foot">hashes SHA-256 conhecidos</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Proteção em tempo real</div>
+          <div class="card-value muted">Em breve</div>
+          <div class="card-foot">prevista para a Fase 3</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VERIFICAR -->
+    <section class="page" id="page-scan">
+      <header class="page-header">
+        <h1>Verificar</h1>
+      </header>
+
+      <div class="scan-options" id="scan-options">
+        <button class="scan-option" data-scan="quick">
+          <div class="scan-option-title">Rápida</div>
+          <div class="scan-option-desc">Downloads, Área de Trabalho, Documentos, Temp e Inicialização.</div>
+        </button>
+        <button class="scan-option" data-scan="full">
+          <div class="scan-option-title">Completa</div>
+          <div class="scan-option-desc">Todas as unidades do computador. Pode levar bastante tempo.</div>
+        </button>
+        <button class="scan-option" data-scan="custom">
+          <div class="scan-option-title">Personalizada</div>
+          <div class="scan-option-desc">Escolha uma pasta específica para verificar.</div>
+        </button>
+      </div>
+
+      <div class="panel hidden" id="scan-progress">
+        <div class="progress-head">
+          <div>
+            <div class="progress-title" id="scan-label">Verificando…</div>
+            <div class="progress-count"><strong id="scan-files">0</strong> arquivos analisados</div>
+          </div>
+          <button class="btn danger" id="btn-cancel">Cancelar</button>
+        </div>
+        <div class="indeterminate"><div></div></div>
+        <div class="progress-current" id="scan-current"></div>
+      </div>
+
+      <div class="panel hidden" id="scan-result">
+        <div class="result-head">
+          <div>
+            <div class="result-title" id="result-title"></div>
+            <div class="result-sub" id="result-sub"></div>
+          </div>
+          <button class="btn ghost" id="btn-new-scan">Nova verificação</button>
+        </div>
+        <div id="result-list"></div>
+      </div>
+    </section>
+
+    <!-- HISTÓRICO -->
+    <section class="page" id="page-history">
+      <header class="page-header">
+        <h1>Histórico</h1>
+      </header>
+      <div class="panel">
+        <table class="table">
+          <thead>
+            <tr><th>#</th><th>Data</th><th>Tipo / alvo</th><th class="num">Arquivos</th><th class="num">Detecções</th><th class="num">Duração</th></tr>
+          </thead>
+          <tbody id="history-body"></tbody>
+        </table>
+        <div class="empty hidden" id="history-empty">Nenhuma verificação realizada ainda.</div>
+      </div>
+      <div class="panel hidden" id="history-details">
+        <div class="result-head">
+          <div class="result-title" id="history-details-title"></div>
+          <button class="btn ghost" id="btn-close-details">Fechar</button>
+        </div>
+        <div id="history-details-list"></div>
+      </div>
+    </section>
+
+    <!-- QUARENTENA -->
+    <section class="page" id="page-quarantine">
+      <header class="page-header">
+        <h1>Quarentena</h1>
+        <label class="toggle-inline"><input type="checkbox" id="q-show-all"> Mostrar restaurados e excluídos</label>
+      </header>
+      <div class="panel">
+        <div id="q-list"></div>
+        <div class="empty hidden" id="q-empty">A quarentena está vazia.</div>
+      </div>
+    </section>
+
+    <!-- CONFIGURAÇÕES -->
+    <section class="page" id="page-settings">
+      <header class="page-header">
+        <h1>Configurações</h1>
+      </header>
+      <div class="panel settings">
+        <label class="setting">
+          <div>
+            <div class="setting-title">Isolar ameaças automaticamente</div>
+            <div class="setting-desc">Move para a quarentena apenas arquivos <strong>maliciosos</strong> (assinatura confirmada). Arquivos suspeitos são só relatados.</div>
+          </div>
+          <input type="checkbox" class="switch" id="s-auto-q">
+        </label>
+        <label class="setting">
+          <div>
+            <div class="setting-title">Tamanho máximo de arquivo</div>
+            <div class="setting-desc">Arquivos maiores que este limite (em MB) são ignorados. Use 0 para sem limite.</div>
+          </div>
+          <input type="number" min="0" max="100000" class="input" id="s-max-size">
+        </label>
+        <div class="setting">
+          <div>
+            <div class="setting-title">Pasta de dados</div>
+            <div class="setting-desc mono" id="s-data-dir"></div>
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button class="btn primary" id="btn-save-settings">Salvar</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <dialog class="modal" id="modal">
+    <h3 id="modal-title"></h3>
+    <p id="modal-text"></p>
+    <div class="modal-actions">
+      <button class="btn ghost" id="modal-cancel">Cancelar</button>
+      <button class="btn danger" id="modal-ok">Confirmar</button>
+    </div>
+  </dialog>
+
+  <script src="main.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+[package]
+name = "thugas-kill-virus"
+description = "THUGAS KILL VIRUS — aplicativo desktop"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tkv-core = { path = "../../crates/tkv-core" }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde.workspace = true
+serde_json.workspace = true
+sysinfo = "0.33"
