@@ -1,0 +1,31 @@
+# Rust
+/target/
+**/target/
+
+# Node / Tauri
+node_modules/
+app/dist/
+app/src-tauri/gen/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Modelos e dados de ML (podem conter amostras perigosas ou ser muito grandes)
+ml/data/
+ml/models/
+*.joblib
+*.csv
+
+# NUNCA versionar amostras de malware ou quarentena
+samples/
+quarantine/
+*.quarantine
+
+# IDE / SO
+.vs/
+.vscode/
+*.user
+Thumbs.db

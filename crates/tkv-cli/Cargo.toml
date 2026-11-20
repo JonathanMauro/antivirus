@@ -1,0 +1,15 @@
+[package]
+name = "tkv-cli"
+description = "Linha de comando do THUGAS KILL VIRUS (testes do motor)."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "tkv"
+path = "src/main.rs"
+
+[dependencies]
+tkv-core = { path = "../tkv-core" }
+clap.workspace = true
+serde_json.workspace = true

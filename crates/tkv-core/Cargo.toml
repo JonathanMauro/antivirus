@@ -1,0 +1,16 @@
+[package]
+name = "tkv-core"
+description = "Núcleo do THUGAS KILL VIRUS: hashing, assinaturas, heurística e scanner."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+sha2.workspace = true
+hex.workspace = true
+walkdir.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

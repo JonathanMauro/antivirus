@@ -1,0 +1,394 @@
+Projeto de Antivírus — Requisitos, Arquitetura e Plano de Desenvolvimento
+
+O nome inicial do antivirus sera THUGAS KILL VIRUS
+
+1. Visão geral
+
+A proposta é desenvolver um antivírus para Windows, inicialmente, com
+arquitetura modular, baixo consumo de recursos e possibilidade de
+incorporar inteligência artificial futuramente.
+
+Um antivírus não se limita a procurar arquivos suspeitos. Uma solução
+completa precisa identificar ameaças, monitorar atividades, analisar
+comportamentos, responder a incidentes e proteger seus próprios
+componentes.
+
+Objetivo inicial recomendado: criar um antivírus desktop com scanner
+manual, análise heurística, quarentena, histórico de ameaças e interface
+gráfica moderna.
+
+2. Requisitos fundamentais
+
+2.1 Scanner de arquivos
+
+-   Verificação de arquivos e pastas.
+-   Identificação de arquivos potencialmente maliciosos.
+-   Análise de extensões, assinaturas e características dos arquivos.
+-   Cálculo de hash SHA-256.
+-   Quarentena de arquivos suspeitos.
+
+2.2 Proteção em tempo real
+
+-   Monitoramento de arquivos criados e modificados.
+-   Identificação de comportamentos suspeitos.
+-   Monitoramento de processos.
+-   Possibilidade de impedir a execução de arquivos maliciosos, quando
+    houver integração técnica apropriada.
+
+2.3 Motor de detecção (Detection Engine)
+
+-   Detecção baseada em assinaturas.
+-   Análise heurística.
+-   Análise estática de arquivos.
+-   Identificação de anomalias.
+-   Classificação de ameaças.
+
+2.4 Monitoramento de atividades
+
+-   Processos em execução.
+-   Conexões de rede suspeitas.
+-   Alterações em diretórios sensíveis.
+-   Comportamentos potencialmente associados a ransomware.
+
+2.5 Gerenciamento de ameaças
+
+-   Histórico de detecções.
+-   Quarentena.
+-   Restauração de arquivos.
+-   Exclusão controlada.
+-   Relatórios de varredura.
+
+2.6 Interface gráfica
+
+-   Status da proteção.
+-   Verificação rápida e completa.
+-   Histórico de ameaças.
+-   Configurações.
+-   Indicadores de consumo de CPU e memória.
+
+3. Linguagens de programação recomendadas
+
+Não existe uma única linguagem ideal para todas as partes. Uma
+arquitetura híbrida é uma boa escolha.
+
+  -----------------------------------------------------------------------
+  Linguagem                           Aplicação
+  ----------------------------------- -----------------------------------
+  Rust                                Motor principal, scanner,
+                                      processamento de arquivos e
+                                      serviços
+
+  C#                                  Interface gráfica Windows e
+                                      integração com serviços do sistema
+
+  Python                              Inteligência artificial, análise de
+                                      dados, treinamento e prototipagem
+
+  C/C++                               Componentes específicos de baixo
+                                      nível, quando necessários
+  -----------------------------------------------------------------------
+
+Stack recomendada
+
+-   Rust: núcleo do antivírus, scanner e componentes de segurança.
+-   C# + WPF: interface gráfica nativa para Windows.
+-   Python + Scikit-learn: experimentos e modelos de Machine Learning.
+-   SQLite: armazenamento local de logs, histórico, configurações e
+    detecções.
+-   YARA: regras para identificação de padrões em arquivos.
+-   Git: controle de versão.
+
+Rust é uma boa opção para o núcleo por oferecer desempenho, concorrência
+e garantias de segurança de memória. Python é excelente para IA e
+análise, mas não seria a primeira escolha para o motor principal de
+proteção em tempo real.
+
+4. Escolha da interface gráfica
+
+4.1 WPF + C# — recomendação para Windows
+
+-   Interface nativa para Windows.
+-   Boa integração com serviços do sistema.
+-   Adequada para dashboards e aplicações desktop.
+-   Consumo relativamente baixo, dependendo da implementação.
+
+4.2 Avalonia UI
+
+-   Baseada em .NET.
+-   Compatibilidade com Windows, Linux e macOS.
+-   Boa flexibilidade visual.
+-   Interessante para um projeto multiplataforma.
+
+4.3 Tauri
+
+-   Interface com HTML, CSS e JavaScript.
+-   Backend em Rust.
+-   Aplicações geralmente mais enxutas que alternativas baseadas em
+    Electron.
+-   Boa opção para quem prefere tecnologias web.
+
+Recomendação: WPF + C# se o projeto for exclusivamente para Windows.
+Tauri é uma alternativa interessante se houver preferência por
+tecnologias web. Electron não seria a primeira escolha para um
+aplicativo que prioriza baixo consumo de recursos.
+
+5. Arquitetura sugerida
+
+A arquitetura deve separar a interface, o núcleo de detecção, a camada
+de IA e o armazenamento.
+
+1.  Interface gráfica — C# + WPF
+    -   Apresenta status, resultados, alertas e configurações.
+    -   Comunica-se com o serviço do antivírus por IPC (comunicação
+        entre processos).
+2.  Core do antivírus — Rust
+    -   Scanner de arquivos.
+    -   Motor de detecção.
+    -   Monitoramento em tempo real.
+    -   Gerenciamento de quarentena.
+3.  Camada de inteligência artificial — Python
+    -   Treinamento e avaliação de modelos.
+    -   Engenharia de atributos.
+    -   Classificação e detecção de anomalias.
+4.  Banco de dados — SQLite
+    -   Histórico.
+    -   Configurações.
+    -   Eventos e resultados de análise.
+    -   Metadados de quarentena.
+
+A interface não deve executar diretamente operações privilegiadas. Ela
+deve enviar solicitações a um serviço independente, que valida
+permissões e parâmetros antes de agir.
+
+6. Inteligência artificial e Machine Learning
+
+A IA pode complementar assinaturas e heurísticas, mas não deve ser o
+único mecanismo de detecção.
+
+  -----------------------------------------------------------------------
+  Modelo                              Possível aplicação
+  ----------------------------------- -----------------------------------
+  Isolation Forest                    Identificação de comportamentos
+                                      anômalos
+
+  Autoencoder                         Identificação de padrões diferentes
+                                      dos dados considerados normais
+
+  Random Forest                       Classificação com base em
+                                      características extraídas
+
+  XGBoost                             Classificação baseada em atributos
+
+  Redes neurais                       Análise de padrões mais complexos
+  -----------------------------------------------------------------------
+
+Recomendação inicial
+
+Começar com Isolation Forest para experimentos de detecção de anomalias
+e Random Forest para classificação de arquivos, desde que exista um
+conjunto de dados representativo e rotulado.
+
+Exemplos de atributos
+
+Arquivos: - Tamanho. - Entropia. - Quantidade e características das
+seções PE. - Bibliotecas importadas. - Características do cabeçalho. -
+Indicadores estáticos suspeitos.
+
+Comportamento: - Quantidade de arquivos modificados em determinado
+intervalo. - Frequência de alterações em diretórios. - Quantidade de
+processos iniciados. - Padrões de atividade que possam indicar
+criptografia em massa.
+
+Um arquivo malicioso pode não apresentar anomalia evidente, e uma
+atividade legítima pode parecer suspeita. Por isso, os modelos precisam
+ser combinados com assinaturas, regras heurísticas e contexto. Avaliar
+precisão, recall e taxa de falsos positivos é essencial.
+
+7. Ferramentas e tecnologias complementares
+
+  Ferramenta     Finalidade
+  -------------- -----------------------------------------------
+  YARA           Identificação de padrões em arquivos
+  ClamAV         Referência e estudo de mecanismos antimalware
+  SQLite         Banco de dados local
+  Scikit-learn   Machine Learning
+  PEfile         Análise de executáveis Windows
+  Wireshark      Análise de tráfego de rede
+  Git            Controle de versão
+
+Tecnologias importantes do Windows
+
+AMSI (Antimalware Scan Interface): interface do Windows que permite
+integração com produtos antimalware e inspeção de determinados
+conteúdos, incluindo scripts. É útil para estudar proteção contra
+ameaças baseadas em scripts.
+
+Windows Minifilter Driver: tecnologia para monitorar operações no
+sistema de arquivos. Pode ser usada em arquiteturas avançadas de
+proteção em tempo real.
+
+Desenvolver drivers de kernel é uma etapa avançada. Exige Windows Driver
+Kit, testes rigorosos, assinatura de drivers e cuidados para evitar
+travamentos ou corrupção do sistema. Não é recomendado começar por essa
+etapa.
+
+8. Requisitos de máquina e ambiente
+
+  -----------------------------------------------------------------------
+  Recurso                             Recomendação
+  ----------------------------------- -----------------------------------
+  Sistema operacional                 Windows 10/11 de 64 bits
+
+  Processador                         4 núcleos ou superior
+
+  Memória RAM                         8 GB mínimo; 16 GB recomendado
+
+  Armazenamento                       SSD com aproximadamente 10 GB
+                                      livres para o ambiente de
+                                      desenvolvimento
+
+  IDEs                                Visual Studio e/ou Visual Studio
+                                      Code
+
+  Versionamento                       Git e GitHub
+
+  Testes                              Máquina virtual isolada
+  -----------------------------------------------------------------------
+
+Boas práticas: - Usar máquina virtual para testes. - Separar
+desenvolvimento e testes. - Não executar malware real no computador
+pessoal. - Utilizar o arquivo de teste inofensivo EICAR para validar
+detecção. - Criar testes automatizados. - Medir consumo de CPU, memória
+e disco. - Testar falsos positivos antes de habilitar ações automáticas.
+
+9. Roadmap sugerido
+
+As durações abaixo são estimativas para planejamento, não garantias. O
+prazo real depende da experiência, disponibilidade e profundidade de
+cada módulo.
+
+Fase 1 — MVP (2 a 3 semanas)
+
+-   Criar a interface gráfica.
+-   Desenvolver scanner de arquivos.
+-   Implementar SHA-256.
+-   Criar banco SQLite.
+-   Implementar histórico.
+-   Criar quarentena básica.
+
+Entrega: verificação manual funcional.
+
+Fase 2 — Motor de detecção (3 a 4 semanas)
+
+-   Implementar assinaturas.
+-   Integrar YARA.
+-   Desenvolver análise heurística.
+-   Implementar identificação de arquivos PE.
+-   Criar classificação de ameaças.
+
+Entrega: mecanismo de detecção mais completo.
+
+Fase 3 — Proteção em tempo real (4 a 6 semanas)
+
+-   Criar serviço Windows.
+-   Monitorar alterações em arquivos.
+-   Monitorar processos.
+-   Desenvolver mecanismo de resposta.
+-   Estudar integração com Minifilter, em ambiente de desenvolvimento
+    controlado.
+
+Entrega: monitoramento contínuo, inicialmente em modo de observação.
+
+Fase 4 — Inteligência artificial (3 a 5 semanas)
+
+-   Construir ou selecionar dataset confiável.
+-   Realizar engenharia de atributos.
+-   Treinar Isolation Forest.
+-   Treinar Random Forest.
+-   Avaliar precisão, recall e falsos positivos.
+-   Integrar os modelos ao motor Rust.
+
+Entrega: camada complementar de análise inteligente.
+
+Fase 5 — Produto e otimização (3 a 4 semanas)
+
+-   Otimizar consumo de memória.
+-   Criar atualização segura de assinaturas.
+-   Implementar proteção contra adulteração.
+-   Melhorar interface.
+-   Implementar relatórios.
+-   Realizar testes de segurança.
+
+Entrega: versão beta para testes controlados.
+
+Estimativa total inicial: aproximadamente 15 a 22 semanas, considerando
+um desenvolvedor trabalhando de forma consistente. Uma solução comercial
+madura exigiria muito mais validação, manutenção e testes.
+
+10. Funcionalidades para diferenciar o projeto
+
+-   Risk Score: pontuação de risco para auxiliar a priorização de
+    arquivos.
+-   Análise comportamental: identificação de atividades suspeitas.
+-   Dashboard de ameaças: visualização de indicadores e histórico.
+-   Detecção de ransomware: identificação de padrões compatíveis com
+    criptografia em massa.
+-   Threat Intelligence: atualização de informações sobre ameaças.
+-   Análise de processos: identificação e investigação de processos
+    suspeitos.
+-   Relatório inteligente: explicação dos motivos que levaram a uma
+    detecção.
+
+Exemplo ilustrativo de Risk Score
+
+Um arquivo pode receber uma pontuação de risco de 0 a 100, calculada a
+partir de diferentes sinais: - Entropia elevada. - Assinatura conhecida
+ou desconhecida. - Indicadores estáticos suspeitos. - Comportamento
+observado. - Resultado de modelos de classificação.
+
+Uma pontuação alta deve levar a uma análise adicional ou isolamento
+controlado, não necessariamente à exclusão automática. O cálculo precisa
+ser calibrado e validado com dados reais.
+
+11. Configuração inicial recomendada
+
+  Componente                    Tecnologia
+  ----------------------------- -------------------
+  Core                          Rust
+  Interface                     C# + WPF
+  Banco de dados                SQLite
+  IA                            Python
+  Machine Learning              Scikit-learn
+  Detecção                      YARA + heurística
+  Hash                          SHA-256
+  Sistema operacional inicial   Windows 11
+  Versionamento                 GitHub
+
+Escopo do primeiro MVP: scanner manual, análise básica, cálculo de hash,
+quarentena, histórico e interface gráfica.
+
+12. Recomendações finais
+
+1.  Não tentar competir imediatamente com Windows Defender, Kaspersky ou
+    Bitdefender.
+2.  Priorizar um motor de detecção confiável, mensurável e eficiente.
+3.  Começar com verificação manual antes de implementar proteção em
+    tempo real.
+4.  Não depender exclusivamente de IA.
+5.  Medir falsos positivos, precisão, recall e consumo de recursos.
+6.  Desenvolver mecanismos seguros de quarentena e restauração.
+7.  Tratar atualizações, permissões e proteção contra adulteração como
+    requisitos de segurança.
+8.  Adiar drivers de kernel até que o núcleo em modo usuário esteja
+    estável.
+
+13. Próximas decisões para iniciar o desenvolvimento
+
+Definir: - Nível: básico, avançado ou profissional. - Plataforma:
+Windows, Windows/Linux ou multiplataforma. - Interface: WPF, Avalonia ou
+Tauri. - IA: abordagem híbrida, Machine Learning como foco ou sem IA
+inicialmente. - Prioridade: equilíbrio, baixo consumo de recursos ou
+máxima capacidade de detecção.
+
+Com essas escolhas, o próximo passo é definir a estrutura de pastas, os
+módulos, as dependências e implementar o primeiro scanner.
