@@ -19,10 +19,14 @@
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 use tkv_core::analysis::analyze_file;
-use tkv_core::{Database, Quarantine, ScanConfig, Scanner, SignatureDb, Verdict};
+use tkv_core::{
+    Database, Detection, Quarantine, ScanConfig, Scanner, SignatureDb, ThreatCategory, Verdict,
+    YaraRules,
+};
 
 #[derive(Parser)]
 #[command(name = "tkv", version, about = "THUGAS KILL VIRUS — linha de comando")]
@@ -41,9 +45,12 @@ enum Command {
     Scan {
         /// Arquivo ou pasta a verificar
         path: PathBuf,
-        /// Arquivo de assinaturas adicional (formato '<sha256>;<nome>')
+        /// Arquivo de assinaturas adicional (formato '<sha256>;<nome>[;<categoria>]')
         #[arg(short, long)]
         signatures: Option<PathBuf>,
+        /// Pasta com regras YARA (padrão: rules\yara, se existir)
+        #[arg(short, long)]
+        rules: Option<PathBuf>,
         /// Tamanho máximo de arquivo em MB (0 = sem limite)
         #[arg(long, default_value_t = 512)]
         max_size_mb: u64,
@@ -69,6 +76,13 @@ enum Command {
     },
     /// Mostra SHA-256, tamanho e entropia de um arquivo
     Hash { file: PathBuf },
+    /// Análise detalhada de um arquivo (estrutura PE, YARA, heurísticas, veredito)
+    Inspect {
+        file: PathBuf,
+        /// Pasta com regras YARA (padrão: rules\yara, se existir)
+        #[arg(short, long)]
+        rules: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -121,13 +135,25 @@ fn run(cli: Cli) -> Result<ExitCode, String> {
     let dir = data_dir(cli.data_dir);
     match cli.command {
         Command::Hash { file } => cmd_hash(&file),
+        Command::Inspect { file, rules } => cmd_inspect(&file, rules.as_deref()),
         Command::Scan {
             path,
             signatures,
+            rules,
             max_size_mb,
             quarantine,
             json,
-        } => cmd_scan(&dir, &path, signatures.as_deref(), max_size_mb, quarantine, json),
+        } => cmd_scan(
+            &dir,
+            &path,
+            ScanOptions {
+                signatures,
+                rules,
+                max_size_mb,
+                quarantine,
+                json,
+            },
+        ),
         Command::History { scan_id, limit } => cmd_history(&dir, scan_id, limit),
         Command::Quarantine { action } => cmd_quarantine(&dir, action),
     }
@@ -143,6 +169,59 @@ fn cmd_hash(file: &Path) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
+fn cmd_inspect(file: &Path, rules: Option<&Path>) -> Result<ExitCode, String> {
+    let data = std::fs::read(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let facts = tkv_core::analysis::analyze_bytes(&data);
+    println!("arquivo : {}", file.display());
+    println!("sha256  : {}", facts.sha256);
+    println!("tamanho : {} bytes", facts.size);
+    println!("entropia: {:.4} bits/byte", facts.entropy);
+
+    if let Some(pe) = tkv_core::pe::parse(&data) {
+        println!(
+            "\nPE {}{}{}  | entrada 0x{:x} | {} import(s) | certificado: {}",
+            if pe.is_64 { "64 bits" } else { "32 bits" },
+            if pe.is_dll { ", DLL" } else { "" },
+            if pe.is_dotnet { ", .NET" } else { "" },
+            pe.entry_point,
+            pe.imports.len(),
+            if pe.has_certificate { "presente (não verificado)" } else { "ausente" },
+        );
+        println!("  {:<10} {:>10} {:>10} {:>8}  flags", "seção", "virtual", "bruto", "entropia");
+        for (i, s) in pe.sections.iter().enumerate() {
+            println!(
+                "  {:<10} {:>10} {:>10} {:>8.3}  {}{}{}",
+                s.name,
+                s.virtual_size,
+                s.raw_size,
+                s.entropy,
+                if s.executable { "X" } else { "-" },
+                if s.writable { "W" } else { "-" },
+                if pe.entry_section == Some(i) { "  <- entrada" } else { "" },
+            );
+        }
+    } else if facts.is_pe() {
+        println!("\ncomeça com 'MZ', mas a estrutura PE é inválida");
+    }
+
+    let scanner = build_scanner(None, rules, ScanConfig::default())?;
+    let det = scanner.scan_bytes(
+        file.file_name().and_then(|n| n.to_str()).unwrap_or(""),
+        &data,
+    );
+    println!(
+        "\nveredito: {} | risco {} | {} {}",
+        verdict_label(det.verdict).trim(),
+        det.risk_score,
+        category_label(&det),
+        det.threat_name.as_deref().unwrap_or("")
+    );
+    for ind in &det.indicators {
+        println!("  +{:<3} {}", ind.score, ind.description);
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 fn verdict_label(v: Verdict) -> &'static str {
     match v {
         Verdict::Malicious => "MALICIOSO",
@@ -151,31 +230,68 @@ fn verdict_label(v: Verdict) -> &'static str {
     }
 }
 
-fn cmd_scan(
-    dir: &Path,
-    path: &Path,
-    signatures: Option<&Path>,
+struct ScanOptions {
+    signatures: Option<PathBuf>,
+    rules: Option<PathBuf>,
     max_size_mb: u64,
     quarantine: bool,
     json: bool,
-) -> Result<ExitCode, String> {
-    let store = open_store(dir)?;
+}
+
+/// Monta o scanner com assinaturas embutidas/extras e regras YARA.
+fn build_scanner(
+    signatures: Option<&Path>,
+    rules: Option<&Path>,
+    config: ScanConfig,
+) -> Result<Scanner, String> {
     let mut db = SignatureDb::with_builtin();
     if let Some(sig) = signatures {
         db.load_file(sig).map_err(|e| e.to_string())?;
     }
+    let scanner = Scanner::new(db, config);
+
+    let rules_dir = match rules {
+        Some(dir) if !dir.is_dir() => {
+            return Err(format!("pasta de regras '{}' não existe", dir.display()))
+        }
+        Some(dir) => Some(dir.to_path_buf()),
+        None => Some(PathBuf::from(r"rules\yara")).filter(|d| d.is_dir()),
+    };
+    match rules_dir {
+        Some(dir) => {
+            let compiled = YaraRules::compile_dirs(&[dir]).map_err(|e| e.to_string())?;
+            Ok(scanner.with_yara(Arc::new(compiled)))
+        }
+        None => Ok(scanner),
+    }
+}
+
+fn category_label(d: &Detection) -> String {
+    d.category.map(|c| c.label().to_string()).unwrap_or_default()
+}
+
+fn cmd_scan(dir: &Path, path: &Path, opts: ScanOptions) -> Result<ExitCode, String> {
+    let ScanOptions {
+        signatures,
+        rules,
+        max_size_mb,
+        quarantine,
+        json,
+    } = opts;
+    let store = open_store(dir)?;
     let config = ScanConfig {
         max_file_size: max_size_mb.saturating_mul(1024 * 1024),
         ..ScanConfig::default()
     };
-    let scanner = Scanner::new(db, config);
+    let scanner = build_scanner(signatures.as_deref(), rules.as_deref(), config)?;
     let target = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
 
     if !json {
         println!(
-            "THUGAS KILL VIRUS — verificando '{}' ({} assinaturas)\n",
+            "THUGAS KILL VIRUS — verificando '{}' ({} assinaturas, {} regras YARA)\n",
             target.display(),
-            scanner.signatures().len()
+            scanner.signatures().len(),
+            scanner.yara_rule_count()
         );
     }
 
@@ -223,6 +339,8 @@ fn cmd_scan(
                 d.risk_score,
                 d.path.display()
             );
+            let name = d.threat_name.as_deref().unwrap_or("");
+            println!("             categoria: {}  {name}", category_label(d));
             for ind in &d.indicators {
                 println!("             - {}", ind.description);
             }
@@ -303,6 +421,9 @@ fn cmd_history(dir: &Path, scan_id: Option<i64>, limit: usize) -> Result<ExitCod
                 println!("[{label}] risco {:>3}  {}", d.risk_score, d.path);
                 if let Some(name) = &d.threat_name {
                     println!("              ameaça: {name}");
+                }
+                if let Some(cat) = d.category.as_deref().and_then(ThreatCategory::parse) {
+                    println!("              categoria: {}", cat.label());
                 }
                 println!("              sha256: {}", d.sha256);
             }

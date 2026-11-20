@@ -4,13 +4,22 @@
 //!
 //! ```text
 //! # comentário
-//! <sha256-hex>;<nome-da-ameaça>
+//! <sha256-hex>;<nome-da-ameaça>[;<categoria>]
 //! ```
+//!
+//! A categoria é opcional (ver [`ThreatCategory`]); sem ela, é deduzida do nome.
 
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::classify::ThreatCategory;
 use crate::error::{Error, Result};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignatureEntry {
+    pub name: String,
+    pub category: Option<ThreatCategory>,
+}
 
 /// SHA-256 do arquivo de teste padrão EICAR (68 bytes).
 /// Ele é inofensivo e serve para validar a detecção.
@@ -19,7 +28,7 @@ pub const EICAR_NAME: &str = "EICAR-Test-File";
 
 #[derive(Debug, Clone, Default)]
 pub struct SignatureDb {
-    by_sha256: HashMap<String, String>,
+    by_sha256: HashMap<String, SignatureEntry>,
 }
 
 impl SignatureDb {
@@ -35,16 +44,33 @@ impl SignatureDb {
         db
     }
 
+    /// Insere uma assinatura; a categoria é deduzida do nome.
     pub fn insert(&mut self, sha256: &str, name: &str) {
-        self.by_sha256
-            .insert(sha256.trim().to_ascii_lowercase(), name.trim().to_string());
+        self.insert_with_category(sha256, name, ThreatCategory::infer(name));
+    }
+
+    pub fn insert_with_category(
+        &mut self,
+        sha256: &str,
+        name: &str,
+        category: Option<ThreatCategory>,
+    ) {
+        self.by_sha256.insert(
+            sha256.trim().to_ascii_lowercase(),
+            SignatureEntry {
+                name: name.trim().to_string(),
+                category,
+            },
+        );
     }
 
     /// Retorna o nome da ameaça, se o hash for conhecido.
     pub fn lookup(&self, sha256: &str) -> Option<&str> {
-        self.by_sha256
-            .get(&sha256.to_ascii_lowercase())
-            .map(String::as_str)
+        self.lookup_entry(sha256).map(|e| e.name.as_str())
+    }
+
+    pub fn lookup_entry(&self, sha256: &str) -> Option<&SignatureEntry> {
+        self.by_sha256.get(&sha256.to_ascii_lowercase())
     }
 
     pub fn len(&self) -> usize {
@@ -74,14 +100,23 @@ impl SignatureDb {
                     reason: format!("hash SHA-256 inválido: '{hash}'"),
                 });
             }
-            let name = name.trim();
+            let (name, category) = match name.split_once(';') {
+                Some((n, c)) => {
+                    let cat = ThreatCategory::parse(c).ok_or_else(|| Error::InvalidSignature {
+                        line: idx + 1,
+                        reason: format!("categoria desconhecida: '{}'", c.trim()),
+                    })?;
+                    (n.trim(), Some(cat))
+                }
+                None => (name.trim(), ThreatCategory::infer(name)),
+            };
             if name.is_empty() {
                 return Err(Error::InvalidSignature {
                     line: idx + 1,
                     reason: "nome da ameaça vazio".into(),
                 });
             }
-            self.insert(hash, name);
+            self.insert_with_category(hash, name, category);
             count += 1;
         }
         Ok(count)
@@ -111,6 +146,31 @@ mod tests {
         let text = format!("# comentário\n\n{};Teste.Generico\n", "a".repeat(64));
         assert_eq!(db.load_str(&text).unwrap(), 1);
         assert_eq!(db.lookup(&"a".repeat(64)), Some("Teste.Generico"));
+    }
+
+    #[test]
+    fn parses_category_field_and_infers_otherwise() {
+        let mut db = SignatureDb::new();
+        let text = format!(
+            "{};Amostra.X;ransomware\n{};Trojan.Win32.Y\n",
+            "c".repeat(64),
+            "d".repeat(64)
+        );
+        assert_eq!(db.load_str(&text).unwrap(), 2);
+        let c = db.lookup_entry(&"c".repeat(64)).unwrap();
+        assert_eq!(c.category, Some(ThreatCategory::Ransomware));
+        let d = db.lookup_entry(&"d".repeat(64)).unwrap();
+        assert_eq!(d.category, Some(ThreatCategory::Trojan));
+        assert_eq!(
+            SignatureDb::with_builtin()
+                .lookup_entry(EICAR_SHA256)
+                .unwrap()
+                .category,
+            Some(ThreatCategory::Test)
+        );
+        assert!(db
+            .load_str(&format!("{};Nome;categoria-inexistente", "e".repeat(64)))
+            .is_err());
     }
 
     #[test]

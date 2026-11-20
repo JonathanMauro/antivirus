@@ -16,6 +16,7 @@ use tauri::{AppHandle, Emitter, State};
 use tkv_core::storage::{ScanSummary, StoredDetection};
 use tkv_core::{
     Database, Detection, Quarantine, QuarantineItem, ScanConfig, Scanner, SignatureDb, Verdict,
+    YaraRules,
 };
 
 const KEY_AUTO_QUARANTINE: &str = "auto_quarantine";
@@ -28,6 +29,9 @@ pub struct AppState {
     pub db: Mutex<Database>,
     pub quarantine: Quarantine,
     pub signatures: SignatureDb,
+    pub yara: Option<Arc<YaraRules>>,
+    /// Erro de compilação das regras YARA, exibido no painel.
+    pub yara_error: Option<String>,
     pub scanning: AtomicBool,
     pub cancel: Arc<AtomicBool>,
     pub sys: Mutex<System>,
@@ -38,6 +42,15 @@ impl AppState {
         self.db
             .lock()
             .map_err(|_| "banco de dados indisponível".to_string())
+    }
+
+    /// Scanner com assinaturas e regras YARA carregadas.
+    fn scanner(&self, config: ScanConfig) -> Scanner {
+        let scanner = Scanner::new(self.signatures.clone(), config);
+        match &self.yara {
+            Some(rules) => scanner.with_yara(rules.clone()),
+            None => scanner,
+        }
     }
 }
 
@@ -51,6 +64,8 @@ fn err(e: impl ToString) -> String {
 pub struct Status {
     version: &'static str,
     signatures: usize,
+    yara_rules: usize,
+    yara_error: Option<String>,
     quarantined: usize,
     last_scan: Option<ScanSummary>,
     data_dir: String,
@@ -63,6 +78,8 @@ pub fn get_status(state: State<'_, AppState>) -> Result<Status, String> {
     Ok(Status {
         version: env!("CARGO_PKG_VERSION"),
         signatures: state.signatures.len(),
+        yara_rules: state.yara.as_ref().map_or(0, |r| r.len()),
+        yara_error: state.yara_error.clone(),
         quarantined: db.quarantine_items(false).map_err(err)?.len(),
         last_scan: db.recent_scans(1).map_err(err)?.into_iter().next(),
         data_dir: state.data_dir.display().to_string(),
@@ -157,13 +174,10 @@ pub async fn start_scan(
         let db = state.db()?;
         read_settings(&db)?
     };
-    let scanner = Scanner::new(
-        state.signatures.clone(),
-        ScanConfig {
-            max_file_size: max_mb.saturating_mul(1024 * 1024),
-            ..ScanConfig::default()
-        },
-    );
+    let scanner = state.scanner(ScanConfig {
+        max_file_size: max_mb.saturating_mul(1024 * 1024),
+        ..ScanConfig::default()
+    });
 
     let cancel = state.cancel.clone();
     let emitter = app.clone();
@@ -261,7 +275,7 @@ pub fn quarantine_list(
 
 #[tauri::command]
 pub fn quarantine_add(state: State<'_, AppState>, path: String) -> Result<QuarantineItem, String> {
-    let scanner = Scanner::new(state.signatures.clone(), ScanConfig::default());
+    let scanner = state.scanner(ScanConfig::default());
     let det = scanner.scan_file(Path::new(&path)).map_err(err)?;
     let db = state.db()?;
     state

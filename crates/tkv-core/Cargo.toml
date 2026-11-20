@@ -13,6 +13,13 @@ thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rusqlite.workspace = true
+goblin.workspace = true
+yara-x = { workspace = true, optional = true }
+
+[features]
+default = ["yara"]
+# Motor YARA (yara-x). Desative com --no-default-features para um build mínimo.
+yara = ["dep:yara-x"]
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -13,7 +13,10 @@ use serde::Serialize;
 use crate::error::{Error, Result};
 use crate::scanner::ScanReport;
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
+
+/// v2: categoria da ameaça em cada detecção.
+const SCHEMA_V2: &str = "ALTER TABLE detections ADD COLUMN category TEXT;";
 
 const SCHEMA_V1: &str = r#"
 CREATE TABLE scans (
@@ -89,6 +92,8 @@ pub struct StoredDetection {
     /// Lista de indicadores serializada em JSON.
     pub indicators_json: String,
     pub detected_at: String,
+    /// Categoria da ameaça (ver `ThreatCategory::as_str`); ausente em registros v1.
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -165,11 +170,15 @@ impl Database {
         if version > SCHEMA_VERSION {
             return Err(Error::UnsupportedSchema(version));
         }
-        if version < 1 {
-            let tx = self.conn.unchecked_transaction()?;
-            tx.execute_batch(SCHEMA_V1)?;
-            tx.execute_batch("PRAGMA user_version = 1;")?;
-            tx.commit()?;
+        // Cada migração roda em transação própria: ou aplica tudo, ou nada.
+        let steps: [(i64, &str); 2] = [(1, SCHEMA_V1), (2, SCHEMA_V2)];
+        for (target, sql) in steps {
+            if version < target {
+                let tx = self.conn.unchecked_transaction()?;
+                tx.execute_batch(sql)?;
+                tx.execute_batch(&format!("PRAGMA user_version = {target};"))?;
+                tx.commit()?;
+            }
         }
         Ok(())
     }
@@ -197,8 +206,8 @@ impl Database {
         {
             let mut stmt = tx.prepare(
                 "INSERT INTO detections (scan_id, path, sha256, size, verdict, risk_score,
-                                         threat_name, indicators)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                                         threat_name, indicators, category)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             )?;
             for d in &report.detections {
                 stmt.execute(params![
@@ -210,6 +219,7 @@ impl Database {
                     d.risk_score as i64,
                     d.threat_name,
                     serde_json::to_string(&d.indicators)?,
+                    d.category.map(|c| c.as_str()),
                 ])?;
             }
         }
@@ -244,7 +254,7 @@ impl Database {
     pub fn scan_detections(&self, scan_id: i64) -> Result<Vec<StoredDetection>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, scan_id, path, sha256, size, verdict, risk_score, threat_name,
-                    indicators, detected_at
+                    indicators, detected_at, category
              FROM detections WHERE scan_id = ?1 ORDER BY risk_score DESC, id",
         )?;
         let rows = stmt.query_map([scan_id], |r| {
@@ -259,6 +269,7 @@ impl Database {
                 threat_name: r.get(7)?,
                 indicators_json: r.get(8)?,
                 detected_at: r.get(9)?,
+                category: r.get(10)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -401,7 +412,38 @@ mod tests {
         let dets = db.scan_detections(id).unwrap();
         assert_eq!(dets.len(), 1);
         assert_eq!(dets[0].verdict, "suspicious");
+        assert_eq!(dets[0].category.as_deref(), Some("generic"));
         assert!(dets[0].indicators_json.contains("double_extension"));
+    }
+
+    #[test]
+    fn migrates_v1_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("v1.db");
+        {
+            // Simula um banco criado pela versão 1.
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(SCHEMA_V1).unwrap();
+            conn.execute_batch(
+                "PRAGMA user_version = 1;
+                 INSERT INTO scans (target, files_scanned, bytes_scanned, skipped_too_large,
+                                    detections, errors, duration_ms)
+                 VALUES ('antigo', 1, 1, 0, 1, 0, 1);
+                 INSERT INTO detections (scan_id, path, sha256, size, verdict, risk_score,
+                                         threat_name, indicators)
+                 VALUES (1, 'C:\\x', 'abc', 1, 'malicious', 100, 'X', '[]');",
+            )
+            .unwrap();
+        }
+        let db = Database::open(&path).unwrap();
+        let version: i64 = db
+            .conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+        let dets = db.scan_detections(1).unwrap();
+        assert_eq!(dets.len(), 1, "dados antigos preservados");
+        assert_eq!(dets[0].category, None);
     }
 
     #[test]

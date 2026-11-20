@@ -101,6 +101,15 @@ pub fn sha256_file(path: &Path) -> Result<String> {
     analyze_file(path).map(|f| f.sha256)
 }
 
+/// Entropia de Shannon de um trecho de bytes.
+pub fn entropy_of(data: &[u8]) -> f64 {
+    let mut histogram = [0u64; 256];
+    for &b in data {
+        histogram[b as usize] += 1;
+    }
+    shannon_entropy(&histogram, data.len() as u64)
+}
+
 /// Entropia de Shannon a partir de um histograma de bytes.
 pub fn shannon_entropy(histogram: &[u64; 256], total: u64) -> f64 {
     if total == 0 {

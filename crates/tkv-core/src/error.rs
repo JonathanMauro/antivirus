@@ -21,6 +21,9 @@ pub enum Error {
     #[error("quarentena: {0}")]
     Quarantine(String),
 
+    #[error("YARA: {0}")]
+    Yara(String),
+
     #[error("o banco de dados foi criado por uma versão mais nova (esquema {0})")]
     UnsupportedSchema(i64),
 }

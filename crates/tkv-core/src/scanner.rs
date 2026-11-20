@@ -2,14 +2,21 @@
 
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
+#[cfg(feature = "yara")]
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use walkdir::WalkDir;
 
 use crate::analysis::{analyze_bytes, analyze_file, FileFacts};
+use crate::classify::ThreatCategory;
 use crate::heuristics::{self, Indicator};
+use crate::pe::{self, PeInfo};
 use crate::signatures::SignatureDb;
+use crate::yara::YaraMatch;
+#[cfg(feature = "yara")]
+use crate::yara::YaraRules;
 
 /// Risk Score a partir do qual um arquivo é considerado suspeito.
 pub const SUSPICIOUS_THRESHOLD: u8 = 40;
@@ -40,8 +47,10 @@ pub struct Detection {
     pub verdict: Verdict,
     /// Pontuação de 0 a 100.
     pub risk_score: u8,
-    /// Nome da ameaça, quando houver correspondência de assinatura.
+    /// Nome da ameaça (assinatura ou regra YARA maliciosa).
     pub threat_name: Option<String>,
+    /// Categoria da ameaça; `None` quando o arquivo está limpo.
+    pub category: Option<ThreatCategory>,
     /// Motivos da detecção (base do "relatório inteligente").
     pub indicators: Vec<Indicator>,
 }
@@ -88,46 +97,123 @@ impl Default for ScanConfig {
     }
 }
 
+/// Arquivos até este tamanho recebem análise profunda (PE + YARA), que exige
+/// o conteúdo em memória. Acima disso, apenas hash e cabeçalho.
+pub const DEEP_ANALYSIS_MAX: u64 = 64 * 1024 * 1024;
+
 pub struct Scanner {
     db: SignatureDb,
     config: ScanConfig,
+    #[cfg(feature = "yara")]
+    yara: Option<Arc<YaraRules>>,
 }
 
 impl Scanner {
     pub fn new(db: SignatureDb, config: ScanConfig) -> Self {
-        Self { db, config }
+        Self {
+            db,
+            config,
+            #[cfg(feature = "yara")]
+            yara: None,
+        }
+    }
+
+    /// Ativa as regras YARA neste scanner.
+    #[cfg(feature = "yara")]
+    pub fn with_yara(mut self, rules: Arc<YaraRules>) -> Self {
+        self.yara = Some(rules);
+        self
     }
 
     pub fn signatures(&self) -> &SignatureDb {
         &self.db
     }
 
-    /// Classifica um arquivo a partir de suas características.
-    pub fn classify(&self, path: &Path, facts: &FileFacts) -> Detection {
-        let file_name = path.file_name().and_then(|n| n.to_str());
-        let mut indicators = heuristics::evaluate(file_name, facts);
+    /// Quantidade de regras YARA ativas.
+    pub fn yara_rule_count(&self) -> usize {
+        #[cfg(feature = "yara")]
+        {
+            self.yara.as_ref().map_or(0, |r| r.len())
+        }
+        #[cfg(not(feature = "yara"))]
+        {
+            0
+        }
+    }
 
-        let threat_name = self.db.lookup(&facts.sha256).map(str::to_string);
-        let (verdict, risk_score) = if let Some(name) = &threat_name {
-            indicators.insert(
-                0,
-                Indicator {
-                    id: "signature_match",
-                    description: format!("hash corresponde à assinatura '{name}'"),
-                    score: 100,
+    fn yara_scan(&self, data: &[u8]) -> Vec<YaraMatch> {
+        #[cfg(feature = "yara")]
+        if let Some(rules) = &self.yara {
+            // Falha de YARA (ex.: timeout) não impede o restante da análise.
+            return rules.scan(data).unwrap_or_default();
+        }
+        let _ = data;
+        Vec::new()
+    }
+
+    /// Classifica um arquivo combinando assinaturas, YARA e heurísticas.
+    ///
+    /// Prioridade do veredito:
+    /// 1. hash na base de assinaturas → MALICIOSO;
+    /// 2. regra YARA marcada `malicious = true` → MALICIOSO;
+    /// 3. soma das pontuações (heurísticas + regras YARA) ≥ 40 → SUSPEITO.
+    pub fn classify(
+        &self,
+        path: &Path,
+        facts: &FileFacts,
+        pe: Option<&PeInfo>,
+        yara: &[YaraMatch],
+    ) -> Detection {
+        let file_name = path.file_name().and_then(|n| n.to_str());
+        let mut indicators = heuristics::evaluate(file_name, facts, pe);
+        for m in yara {
+            indicators.push(Indicator {
+                id: "yara_rule",
+                description: match &m.description {
+                    Some(d) => format!("regra YARA '{}': {d}", m.rule),
+                    None => format!("regra YARA '{}'", m.rule),
                 },
-            );
-            (Verdict::Malicious, 100)
-        } else {
-            let score: u32 = indicators.iter().map(|i| i.score as u32).sum();
-            let score = score.min(100) as u8;
-            let verdict = if score >= SUSPICIOUS_THRESHOLD {
-                Verdict::Suspicious
+                score: m.score,
+            });
+        }
+
+        let (verdict, risk_score, threat_name, category) =
+            if let Some(sig) = self.db.lookup_entry(&facts.sha256) {
+                indicators.insert(
+                    0,
+                    Indicator {
+                        id: "signature_match",
+                        description: format!("hash corresponde à assinatura '{}'", sig.name),
+                        score: 100,
+                    },
+                );
+                (
+                    Verdict::Malicious,
+                    100,
+                    Some(sig.name.clone()),
+                    Some(sig.category.unwrap_or(ThreatCategory::Generic)),
+                )
+            } else if let Some(m) = yara.iter().find(|m| m.malicious) {
+                let name = m.threat.clone().unwrap_or_else(|| m.rule.clone());
+                let category = m
+                    .category
+                    .or_else(|| ThreatCategory::infer(&name))
+                    .unwrap_or(ThreatCategory::Generic);
+                (Verdict::Malicious, 100, Some(name), Some(category))
             } else {
-                Verdict::Clean
+                let score: u32 = indicators.iter().map(|i| i.score as u32).sum();
+                let score = score.min(100) as u8;
+                if score >= SUSPICIOUS_THRESHOLD {
+                    // Categoria da regra YARA mais forte, ou genérica.
+                    let category = yara
+                        .iter()
+                        .find_map(|m| m.category)
+                        .unwrap_or(ThreatCategory::Generic);
+                    (Verdict::Suspicious, score, None, Some(category))
+                } else {
+                    (Verdict::Clean, score, None, None)
+                }
             };
-            (verdict, score)
-        };
 
         Detection {
             path: path.to_path_buf(),
@@ -136,20 +222,36 @@ impl Scanner {
             verdict,
             risk_score,
             threat_name,
+            category,
             indicators,
         }
     }
 
+    /// Análise completa de um conteúdo em memória.
+    fn analyze(&self, path: &Path, data: &[u8]) -> Detection {
+        let facts = analyze_bytes(data);
+        let pe = if facts.is_pe() { pe::parse(data) } else { None };
+        let yara = self.yara_scan(data);
+        self.classify(path, &facts, pe.as_ref(), &yara)
+    }
+
     /// Analisa um único arquivo.
     pub fn scan_file(&self, path: &Path) -> crate::Result<Detection> {
-        let facts = analyze_file(path)?;
-        Ok(self.classify(path, &facts))
+        let size = std::fs::metadata(path)
+            .map_err(|e| crate::Error::io(path, e))?
+            .len();
+        if size <= DEEP_ANALYSIS_MAX {
+            let data = std::fs::read(path).map_err(|e| crate::Error::io(path, e))?;
+            Ok(self.analyze(path, &data))
+        } else {
+            let facts = analyze_file(path)?;
+            Ok(self.classify(path, &facts, None, &[]))
+        }
     }
 
     /// Analisa conteúdo em memória (útil para testes e, no futuro, AMSI).
     pub fn scan_bytes(&self, name: &str, data: &[u8]) -> Detection {
-        let facts = analyze_bytes(data);
-        self.classify(Path::new(name), &facts)
+        self.analyze(Path::new(name), data)
     }
 
     /// Varre um arquivo ou uma pasta (recursivamente).

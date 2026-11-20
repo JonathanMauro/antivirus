@@ -176,6 +176,8 @@ body { display: flex; overflow: hidden; }
 .pill.suspicious { background: var(--amber-soft); color: var(--amber); }
 .pill.quarantined { background: var(--blue); color: #fff; }
 .pill.restored, .pill.deleted { background: var(--bg-hover); color: var(--text-dim); }
+.pill.category { background: var(--bg-hover); color: var(--text); margin-left: 6px; font-weight: 600; }
+.card-value.error-text { color: var(--red); }
 
 .score { width: 46px; text-align: center; flex-shrink: 0; }
 .score-num { font-size: 18px; font-weight: 800; }

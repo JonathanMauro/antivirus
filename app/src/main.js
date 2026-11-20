@@ -88,6 +88,20 @@ function confirmDialog(title, text, okLabel = "Confirmar") {
 
 const VERDICT_LABEL = { malicious: "MALICIOSO", suspicious: "SUSPEITO", clean: "LIMPO" };
 const STATUS_LABEL = { quarantined: "ISOLADO", restored: "RESTAURADO", deleted: "EXCLUÍDO" };
+const CATEGORY_LABEL = {
+  test: "Arquivo de teste",
+  trojan: "Cavalo de Troia",
+  ransomware: "Ransomware",
+  worm: "Worm",
+  backdoor: "Backdoor / acesso remoto",
+  spyware: "Spyware / roubo de dados",
+  adware: "Adware",
+  pua: "Programa indesejado",
+  hack_tool: "Ferramenta de ataque",
+  exploit: "Exploit",
+  downloader: "Downloader / dropper",
+  generic: "Genérico",
+};
 
 function scoreBadge(score) {
   const cls = score >= 70 ? "high" : score >= 40 ? "mid" : "";
@@ -121,6 +135,9 @@ async function refreshDashboard() {
     const s = await invoke("get_status");
     $("version").textContent = `versão ${s.version}`;
     $("c-signatures").textContent = s.signatures;
+    $("c-yara").textContent = s.yara_error ? "Erro" : s.yara_rules;
+    $("c-yara-foot").textContent = s.yara_error || "padrões de detecção ativos";
+    $("c-yara").classList.toggle("error-text", Boolean(s.yara_error));
     $("c-quarantine").textContent = s.quarantined;
 
     const badge = $("nav-q-badge");
@@ -276,6 +293,7 @@ function detectionItem(d, { quarantinedPaths = new Set(), allowIsolate = true } 
       h("div", { class: "item-path" }, d.path),
       h("div", { class: "item-meta" },
         h("span", { class: `pill ${d.verdict}` }, VERDICT_LABEL[d.verdict] || d.verdict),
+        d.category ? h("span", { class: "pill category" }, CATEGORY_LABEL[d.category] || d.category) : null,
         d.threat_name ? `  ${d.threat_name}` : "",
         `  ·  ${formatBytes(d.size)}  ·  SHA-256 ${d.sha256.slice(0, 16)}…`),
       reasons.length ? h("ul", { class: "item-reasons" }, reasons) : null),
